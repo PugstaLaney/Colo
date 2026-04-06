@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CRC Literature Dialogue</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      flex-shrink: 0;
+      background: #1a1d2e;
+      border-bottom: 1px solid #2d3148;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      height: 50px;
+      gap: 14px;
+    }
+    header h1 { font-size: 14px; font-weight: 700; color: #a78bfa; letter-spacing: 0.8px; white-space: nowrap; }
+    header .api-wrap { display: flex; align-items: center; gap: 8px; margin-left: 20px; }
+    header .api-wrap label { font-size: 11px; color: #64748b; white-space: nowrap; }
+    header input[type="password"] {
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      padding: 5px 10px;
+      font-size: 12px;
+      width: 240px;
+      outline: none;
+      font-family: inherit;
+    }
+    header input[type="password"]:focus { border-color: #6366f1; }
+    .status-badge {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #64748b;
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #64748b; flex-shrink: 0; }
+    .dot.active { background: #22c55e; }
+    .dot.thinking { background: #f59e0b; animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    /* ── Persona Row ── */
+    .personas {
+      flex-shrink: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid #2d3148;
+      height: 230px;
+    }
+    .persona-panel {
+      display: flex;
+      flex-direction: column;
+      padding: 14px 16px;
+      gap: 8px;
+      overflow: hidden;
+    }
+    .persona-panel:first-child { border-right: 1px solid #2d3148; }
+    .persona-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .persona-badge {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .panel-a .persona-badge { background: #1e3a5f; color: #60a5fa; }
+    .panel-b .persona-badge { background: #4a1942; color: #f472b6; }
+    .persona-name-input {
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid #2d3148;
+      color: #e2e8f0;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 2px 4px;
+      outline: none;
+      font-family: inherit;
+      flex: 1;
+    }
+    .panel-a .persona-name-input:focus { border-color: #60a5fa; }
+    .panel-b .persona-name-input:focus { border-color: #f472b6; }
+    .persona-prompt {
+      flex: 1;
+      background: #13161f;
+      border: 1px solid #1e2130;
+      border-radius: 6px;
+      color: #cbd5e1;
+      font-size: 11.5px;
+      line-height: 1.6;
+      padding: 10px 12px;
+      resize: none;
+      outline: none;
+      font-family: inherit;
+      overflow-y: auto;
+    }
+    .panel-a .persona-prompt:focus { border-color: #1e3a5f; }
+    .panel-b .persona-prompt:focus { border-color: #4a1942; }
+
+    /* ── Controls Bar ── */
+    .controls-bar {
+      flex-shrink: 0;
+      background: #13161f;
+      border-bottom: 1px solid #2d3148;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .topic-input {
+      flex: 1;
+      min-width: 180px;
+      background: #1e2130;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      padding: 7px 12px;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+    }
+    .topic-input:focus { border-color: #6366f1; }
+    .topic-input::placeholder { color: #475569; }
+    .turns-wrap { display: flex; align-items: center; gap: 6px; }
+    .turns-wrap label { font-size: 11px; color: #64748b; white-space: nowrap; }
+    .turns-input {
+      width: 44px;
+      background: #1e2130;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      padding: 6px 8px;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      text-align: center;
+    }
+    button {
+      padding: 7px 14px;
+      border-radius: 6px;
+      border: none;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+    button:hover { opacity: 0.82; }
+    button:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-primary { background: #6366f1; color: #fff; }
+    .btn-stop    { background: #ef4444; color: #fff; }
+    .btn-ghost   { background: #1e2130; color: #94a3b8; border: 1px solid #2d3148; }
+    .btn-lit     { background: #1e2130; color: #94a3b8; border: 1px solid #2d3148; }
+    .btn-rag     { background: #1e2130; color: #64748b; border: 1px solid #2d3148; }
+    .btn-rag.on  { background: #14532d; color: #4ade80; border-color: #166534; }
+    .divider     { width: 1px; height: 22px; background: #2d3148; flex-shrink: 0; }
+
+    /* ── Literature Drawer ── */
+    .lit-drawer {
+      flex-shrink: 0;
+      overflow: hidden;
+      max-height: 0;
+      transition: max-height 0.25s ease, border-bottom 0.25s;
+    }
+    .lit-drawer.open {
+      max-height: 180px;
+      border-bottom: 1px solid #2d3148;
+    }
+    .lit-drawer-inner {
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      height: 180px;
+    }
+    .lit-label { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #475569; text-transform: uppercase; }
+    #literature-context {
+      flex: 1;
+      background: #13161f;
+      border: 1px solid #1e2130;
+      border-radius: 6px;
+      color: #cbd5e1;
+      font-size: 11.5px;
+      line-height: 1.6;
+      padding: 10px 12px;
+      resize: none;
+      outline: none;
+      font-family: inherit;
+    }
+    #literature-context:focus { border-color: #6366f1; }
+
+    /* ── Chat Window ── */
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      scroll-behavior: smooth;
+    }
+    #chat::-webkit-scrollbar { width: 5px; }
+    #chat::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 3px; }
+
+    .message {
+      display: flex;
+      flex-direction: column;
+      max-width: 72%;
+      gap: 5px;
+    }
+    .message.agent-a { align-self: flex-start; }
+    .message.agent-b { align-self: flex-end; }
+
+    .msg-header {
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .agent-a .msg-header { color: #60a5fa; }
+    .agent-b .msg-header { color: #f472b6; }
+    .msg-time { font-weight: 400; color: #475569; }
+
+    .msg-bubble {
+      background: #1a1d2e;
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 13px;
+      line-height: 1.65;
+      color: #e2e8f0;
+      white-space: pre-wrap;
+      border: 1px solid transparent;
+    }
+    .agent-a .msg-bubble { border-color: #1e3a5f; border-top-left-radius: 4px; }
+    .agent-b .msg-bubble { border-color: #4a1942; border-top-right-radius: 4px; }
+
+    .msg-bubble.streaming::after {
+      content: '▋';
+      animation: blink 0.75s infinite;
+      color: #6366f1;
+      margin-left: 2px;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    .sys-msg {
+      align-self: center;
+      font-size: 11px;
+      color: #475569;
+      background: #13161f;
+      border: 1px solid #1e2130;
+      border-radius: 20px;
+      padding: 3px 14px;
+    }
+
+    /* ── Inject Footer ── */
+    .chat-footer {
+      flex-shrink: 0;
+      background: #13161f;
+      border-top: 1px solid #1e2130;
+      padding: 10px 16px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .inject-input {
+      flex: 1;
+      background: #1e2130;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      color: #e2e8f0;
+      padding: 9px 14px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+    .inject-input:focus { border-color: #6366f1; }
+    .inject-input::placeholder { color: #475569; }
+    .btn-inject { background: #6366f1; color: #fff; padding: 9px 18px; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <h1>CRC LITERATURE DIALOGUE</h1>
+  <div class="api-wrap">
+    <label>API KEY</label>
+    <input type="password" id="api-key" placeholder="sk-ant-... (auto-loaded when RAG server is running)" autocomplete="off" />
+  </div>
+  <div class="status-badge">
+    <span class="dot idle" id="status-dot"></span>
+    <span id="status-text">Idle</span>
+  </div>
+</header>
+
+<!-- ── Personas Side by Side ── -->
+<div class="personas">
+  <div class="persona-panel panel-a">
+    <div class="persona-header">
+      <span class="persona-badge">AGENT A</span>
+      <input class="persona-name-input" id="name-a" type="text" value="Dr. Alex Chen — Clinical Oncologist" />
+    </div>
+    <textarea class="persona-prompt" id="prompt-a">You are Dr. Alex Chen, a clinical oncologist specializing in colorectal cancer. You reason from clinical trial data, OS/PFS endpoints, response rates, toxicity profiles, and real-world applicability.
+
+SCOPE: You only discuss topics within these four research lanes:
+1. MSI-H/dMMR and immunotherapy response and resistance
+2. RAS/RAF mutation status and anti-EGFR or BRAF-targeted therapy selection
+3. Tumor microenvironment and mechanisms of treatment resistance
+4. ctDNA and liquid biopsy for MRD detection and surveillance
+
+If the conversation drifts outside these lanes, state OUT OF SCOPE: and redirect to the nearest relevant lane.
+
+RESPONSE FORMAT — use these labels every turn:
+CLAIM: [your main point]
+EVIDENCE: [citation from provided literature; tag with one of: [RCT] [META] [COHORT] [PRECLINICAL] [EXPERT]]
+CHALLENGE: [one specific unresolved question you are raising for the other researcher]
+
+RULES:
+- Any claim without a literature citation must be prefixed INFERENCE: and cannot support a VERDICT.
+- If you disagree with the other researcher, prefix your rebuttal DISAGREE: and state specifically what the evidence does or does not show.
+- When asked for a VERDICT, state the single most actionable research direction as a testable hypothesis. A VERDICT is only valid if supported by [RCT] or [META] evidence and there are no unresolved DISAGREE: flags.
+- Keep each labeled section to 2–4 sentences. Flag weak or contradictory evidence explicitly.</textarea>
+  </div>
+  <div class="persona-panel panel-b">
+    <div class="persona-header">
+      <span class="persona-badge">AGENT B</span>
+      <input class="persona-name-input" id="name-b" type="text" value="Dr. Sam Rivera — Translational Researcher" />
+    </div>
+    <textarea class="persona-prompt" id="prompt-b">You are Dr. Sam Rivera, a translational cancer biologist focused on colorectal cancer. You reason from tumor microenvironment biology, signaling pathways, resistance mechanisms, and biomarker development. You are skeptical of clinical conclusions that outrun the underlying mechanism.
+
+SCOPE: You only discuss topics within these four research lanes:
+1. MSI-H/dMMR and immunotherapy response and resistance
+2. RAS/RAF mutation status and anti-EGFR or BRAF-targeted therapy selection
+3. Tumor microenvironment and mechanisms of treatment resistance
+4. ctDNA and liquid biopsy for MRD detection and surveillance
+
+If the conversation drifts outside these lanes, state OUT OF SCOPE: and redirect to the nearest relevant lane.
+
+RESPONSE FORMAT — use these labels every turn:
+CLAIM: [your mechanistic perspective on the current point]
+EVIDENCE: [citation from provided literature; tag with one of: [RCT] [META] [COHORT] [PRECLINICAL] [EXPERT]]
+CHALLENGE: [one specific unresolved mechanistic question you are raising for the other researcher]
+
+RULES:
+- Any claim without a literature citation must be prefixed INFERENCE: and cannot support a VERDICT.
+- If you disagree with the other researcher, prefix your rebuttal DISAGREE: and state specifically what the mechanism does or does not support.
+- When asked for a VERDICT, state the single most actionable research direction as a testable hypothesis. A VERDICT is only valid if supported by [RCT] or [META] evidence and there are no unresolved DISAGREE: flags.
+- Keep each labeled section to 2–4 sentences. Explicitly push back when clinical framing oversimplifies the biology.</textarea>
+  </div>
+</div>
+
+<!-- ── Controls Bar ── -->
+<div class="controls-bar">
+  <input class="topic-input" id="opening-topic" type="text" placeholder="Opening topic — e.g. MSI-H status and immunotherapy eligibility in stage III CRC..." />
+  <div class="turns-wrap">
+    <label>Turns</label>
+    <input class="turns-input" id="auto-turns" type="text" value="4" />
+  </div>
+  <div class="divider"></div>
+  <button class="btn-primary" id="btn-start" onclick="startConversation()">Start</button>
+  <button class="btn-ghost"   id="btn-next"  onclick="nextTurn()" disabled>Next Turn</button>
+  <button class="btn-stop"    id="btn-stop"  onclick="stopConversation()" disabled>Stop</button>
+  <div class="divider"></div>
+  <button class="btn-rag" id="btn-rag" onclick="toggleRag()">RAG Off</button>
+  <button class="btn-lit" onclick="toggleLiterature()">Literature ▾</button>
+  <button class="btn-ghost" onclick="exportChat()">Export</button>
+  <button class="btn-ghost" onclick="clearChat()">Clear</button>
+</div>
+
+<!-- ── Literature Drawer ── -->
+<div class="lit-drawer" id="lit-drawer">
+  <div class="lit-drawer-inner">
+    <div class="lit-label">Literature Context — paste abstracts or notes; both agents draw from this each turn</div>
+    <textarea id="literature-context" placeholder="PMID: 12345678&#10;Title: ...&#10;Abstract: ...&#10;&#10;Paste multiple papers separated by blank lines."></textarea>
+  </div>
+</div>
+
+<!-- ── Chat ── -->
+<div id="chat">
+  <div class="sys-msg">CRC Literature Dialogue</div>
+</div>
+
+<!-- ── Inject Footer ── -->
+<div class="chat-footer">
+  <input class="inject-input" id="inject-input"
+    placeholder="Inject a question or redirect into the conversation — press Enter to send"
+    onkeydown="if(event.key==='Enter') injectMessage()" />
+  <button class="btn-inject" onclick="injectMessage()">Inject</button>
+</div>
+
+<script>
+  // ── State ─────────────────────────────────────────────────────────────────
+  let messages = [];
+  let currentTurn = 0;
+  let running = false;
+  let stopRequested = false;
+  let autoTurnsRemaining = 0;
+  let ragEnabled = false;
+  let turnsSinceCheckpoint = 0;
+  const CHECKPOINT_EVERY = 4; // agent turns between consensus checkpoints
+
+  const RAG_SERVER = 'http://127.0.0.1:8000';
+
+  // ── Auto-load API key from local RAG server on page load ─────────────────
+  // Fetches the Anthropic key from serve_rag.py's /config endpoint so it
+  // never needs to be hardcoded in this file or entered manually.
+  // Fails silently if the server isn't running — key field stays empty.
+  window.addEventListener('load', async () => {
+    try {
+      const res = await fetch(`${RAG_SERVER}/config`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.anthropic_api_key) {
+          document.getElementById('api-key').value = data.anthropic_api_key;
+        }
+      }
+    } catch (_) {}  // Server not running — user can type key manually
+  });
+
+  const CHECKPOINT_PROMPT = `CONSENSUS CHECKPOINT — Before continuing, each researcher must now respond with only the following:
+
+VERDICT: [State the single most actionable research direction that has emerged from this exchange, framed as a testable hypothesis. Must be supported by [RCT] or [META] evidence cited in this conversation.]
+AGREE/DISAGREE: [State whether your VERDICT aligns with the other researcher's. If DISAGREE, state precisely what evidence would resolve the conflict.]
+NEXT LANE: [Identify which of the four research lanes should be the focus of the next exchange and why.]
+
+Do not continue debating. Only provide VERDICT, AGREE/DISAGREE, and NEXT LANE.`;
+
+  const AGENT_CLASSES = ['agent-a', 'agent-b'];
+
+  function agentLabel(i) {
+    const names = [
+      document.getElementById('name-a').value || 'Agent A',
+      document.getElementById('name-b').value || 'Agent B',
+    ];
+    return names[i];
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function setStatus(text, state = 'idle') {
+    document.getElementById('status-text').textContent = text;
+    document.getElementById('status-dot').className = 'dot ' + state;
+  }
+
+  function setControls(isRunning) {
+    document.getElementById('btn-start').disabled = isRunning;
+    document.getElementById('btn-next').disabled = isRunning;
+    document.getElementById('btn-stop').disabled = !isRunning;
+  }
+
+  function addSysMsg(text) {
+    const el = document.createElement('div');
+    el.className = 'sys-msg';
+    el.textContent = text;
+    document.getElementById('chat').appendChild(el);
+    scrollBottom();
+  }
+
+  function scrollBottom() {
+    const c = document.getElementById('chat');
+    c.scrollTop = c.scrollHeight;
+  }
+
+  function ts() {
+    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function toggleLiterature() {
+    document.getElementById('lit-drawer').classList.toggle('open');
+  }
+
+  async function toggleRag() {
+    if (!ragEnabled) {
+      // Test connection before enabling
+      try {
+        const res = await fetch(`${RAG_SERVER}/health`);
+        const data = await res.json();
+        ragEnabled = true;
+        const btn = document.getElementById('btn-rag');
+        btn.textContent = `RAG On (${data.count.toLocaleString()} papers)`;
+        btn.classList.add('on');
+        addSysMsg(`RAG enabled — ${data.count.toLocaleString()} papers in knowledge base`);
+      } catch (e) {
+        addSysMsg('RAG server not reachable. Run: py rag/serve_rag.py');
+      }
+    } else {
+      ragEnabled = false;
+      const btn = document.getElementById('btn-rag');
+      btn.textContent = 'RAG Off';
+      btn.classList.remove('on');
+      addSysMsg('RAG disabled — using manual literature context only');
+    }
+  }
+
+  async function fetchRagContext(query) {
+    try {
+      const res = await fetch(`${RAG_SERVER}/search`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query, n_results: 5 }),
+      });
+      const results = await res.json();
+      if (!results.length) return '';
+      const chunks = results.map(r =>
+        `PMID ${r.pmid} (${r.year}) — ${r.title}\nAuthors: ${r.authors}\nJournal: ${r.journal}\n\n${r.abstract}`
+      );
+      return chunks.join('\n\n---\n\n');
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // ── API ───────────────────────────────────────────────────────────────────
+  async function callClaude(systemPrompt, apiMessages, onChunk) {
+    const key = document.getElementById('api-key').value.trim();
+    if (!key) throw new Error('No API key provided.');
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1024,
+        stream: true,
+        system: systemPrompt,
+        messages: apiMessages,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.error?.message || `HTTP ${res.status}`);
+    }
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let full = '', buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const d = line.slice(6).trim();
+        if (d === '[DONE]') continue;
+        try {
+          const p = JSON.parse(d);
+          if (p.type === 'content_block_delta' && p.delta?.type === 'text_delta') {
+            full += p.delta.text;
+            onChunk(full);
+          }
+        } catch (_) {}
+      }
+    }
+    return full;
+  }
+
+  async function buildSystemPrompt(agentIndex) {
+    const base = agentIndex === 0
+      ? document.getElementById('prompt-a').value
+      : document.getElementById('prompt-b').value;
+
+    // Manual literature context (always included if filled in)
+    const manualLit = document.getElementById('literature-context').value.trim();
+
+    // RAG retrieval: derive a search query from the last few messages
+    let ragLit = '';
+    if (ragEnabled) {
+      const recentText = messages.slice(-3).map(m => m.content).join(' ').slice(0, 400);
+      const query = recentText || document.getElementById('opening-topic').value;
+      ragLit = await fetchRagContext(query);
+    }
+
+    const litSection = [manualLit, ragLit].filter(Boolean).join('\n\n---\n\n');
+    if (!litSection) return base;
+    return `${base}\n\n---\nLITERATURE CONTEXT (cite PMIDs or titles when you draw on specific papers):\n\n${litSection}`;
+  }
+
+  function buildApiMessages(agentIndex) {
+    if (messages.length === 0) return [];
+    const result = messages.map(m => ({
+      role: m.agent === agentIndex ? 'assistant' : 'user',
+      content: m.content,
+    }));
+    if (result[0].role === 'assistant') result.unshift({ role: 'user', content: '(conversation begins)' });
+    return result;
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  function createBubble(agentIndex, streaming) {
+    const wrap = document.createElement('div');
+    wrap.className = `message ${AGENT_CLASSES[agentIndex]}`;
+
+    const hdr = document.createElement('div');
+    hdr.className = 'msg-header';
+    hdr.innerHTML = `${agentLabel(agentIndex)} <span class="msg-time">${ts()}</span>`;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble' + (streaming ? ' streaming' : '');
+
+    wrap.appendChild(hdr);
+    wrap.appendChild(bubble);
+    document.getElementById('chat').appendChild(wrap);
+    scrollBottom();
+    return bubble;
+  }
+
+  // ── Turn logic ────────────────────────────────────────────────────────────
+  async function runAgentTurn(agentIndex) {
+    setStatus(`${agentLabel(agentIndex)} is thinking...`, 'thinking');
+    const bubble = createBubble(agentIndex, true);
+    let full = '';
+    try {
+      full = await callClaude(
+        await buildSystemPrompt(agentIndex),
+        buildApiMessages(agentIndex),
+        partial => { bubble.textContent = partial; scrollBottom(); }
+      );
+    } finally {
+      bubble.classList.remove('streaming');
+    }
+    messages.push({ agent: agentIndex, content: full });
+    return full;
+  }
+
+  async function runLoop() {
+    while (autoTurnsRemaining > 0 && !stopRequested) {
+      autoTurnsRemaining--;
+      try {
+        await runAgentTurn(currentTurn);
+        currentTurn = currentTurn === 0 ? 1 : 0;
+        turnsSinceCheckpoint++;
+
+        // Every CHECKPOINT_EVERY turns, inject consensus checkpoint to both agents
+        if (turnsSinceCheckpoint >= CHECKPOINT_EVERY && !stopRequested) {
+          turnsSinceCheckpoint = 0;
+          addSysMsg('── Consensus Checkpoint ──');
+          messages.push({ agent: currentTurn === 0 ? 1 : 0, content: CHECKPOINT_PROMPT });
+
+          // Both agents respond to the checkpoint
+          await runAgentTurn(0);
+          await runAgentTurn(1);
+          addSysMsg('── Checkpoint Complete — continuing ──');
+        }
+
+        setStatus(autoTurnsRemaining > 0 ? `${autoTurnsRemaining} turns remaining...` : 'Done', 'idle');
+      } catch (err) {
+        addSysMsg(`Error: ${err.message}`);
+        setStatus('Error', 'idle');
+        break;
+      }
+    }
+    running = false;
+    setControls(false);
+    document.getElementById('btn-next').disabled = false;
+    if (!stopRequested) setStatus('Idle — Next Turn or inject a prompt', 'idle');
+    else setStatus('Stopped', 'idle');
+  }
+
+  // ── Public actions ────────────────────────────────────────────────────────
+  async function startConversation() {
+    const topic = document.getElementById('opening-topic').value.trim();
+    if (!topic) { alert('Enter an opening topic first.'); return; }
+    if (!document.getElementById('api-key').value.trim()) { alert('Enter your Anthropic API key first.'); return; }
+
+    clearChat(false);
+    messages = [];
+    currentTurn = 0;
+    stopRequested = false;
+    turnsSinceCheckpoint = 0;
+    autoTurnsRemaining = parseInt(document.getElementById('auto-turns').value) || 4;
+
+    messages.push({ agent: 1, content: `Opening topic for discussion: ${topic}` });
+    addSysMsg(`Topic: "${topic}"`);
+
+    running = true;
+    setControls(true);
+    await runLoop();
+  }
+
+  async function nextTurn() {
+    if (running) return;
+    running = true;
+    stopRequested = false;
+    autoTurnsRemaining = 1;
+    setControls(true);
+    await runLoop();
+  }
+
+  function stopConversation() {
+    stopRequested = true;
+    setStatus('Stopping after current turn...', 'thinking');
+  }
+
+  function injectMessage() {
+    const el = document.getElementById('inject-input');
+    const text = el.value.trim();
+    if (!text) return;
+    el.value = '';
+    addSysMsg(`[Injected] ${text}`);
+    const fromAgent = currentTurn === 0 ? 1 : 0;
+    messages.push({ agent: fromAgent, content: text });
+  }
+
+  function exportChat() {
+    if (messages.length === 0) { alert('Nothing to export.'); return; }
+    let out = `CRC LITERATURE DIALOGUE\n${new Date().toISOString()}\n${'='.repeat(60)}\n\n`;
+    const lit = document.getElementById('literature-context').value.trim();
+    if (lit) out += `LITERATURE CONTEXT:\n${lit}\n\n${'='.repeat(60)}\n\n`;
+    for (const m of messages) out += `[${agentLabel(m.agent)}]\n${m.content}\n\n${'-'.repeat(40)}\n\n`;
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([out], { type: 'text/plain' })),
+      download: `crc_dialogue_${Date.now()}.txt`,
+    });
+    a.click();
+  }
+
+  function clearChat(resetState = true) {
+    document.getElementById('chat').innerHTML = '<div class="sys-msg">CRC Literature Dialogue</div>';
+    if (resetState) {
+      messages = [];
+      currentTurn = 0;
+      document.getElementById('btn-next').disabled = true;
+      setStatus('Idle', 'idle');
+    }
+  }
+</script>
+</body>
+</html>

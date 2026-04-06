@@ -1,0 +1,9 @@
+# Secrets — never commit these
+.env
+
+# Vector database — binary files, too large for git
+data/
+
+# Python cache
+__pycache__/
+*.pyc
