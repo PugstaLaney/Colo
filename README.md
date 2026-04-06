@@ -17,6 +17,8 @@ The long-term goal is to run this against the full PubMed colorectal cancer corp
 
 ## The Two Agents
 
+The agents are represented by simple system prompts that can be easily curated to the researchers needs in the UI. The current system uses the following, but the system context is easily and intuitively configurable in addition to the research question prompt.
+
 **Agent A — Dr. Alex Chen (Clinical Oncologist)**
 Reasons from clinical trial data, OS/PFS endpoints, response rates, and real-world applicability. Challenges mechanistic claims that don't translate to patient outcomes.
 
