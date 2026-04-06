@@ -191,6 +191,19 @@ py build_rag.py --resume
 **Why RAG instead of pasting abstracts manually?**
 Pasting the full literature corpus into every API call would cost ~$1 per agent turn for 107k papers. RAG retrieves only the 12 most relevant abstracts per turn (~3,500 tokens), reducing cost by ~99% while keeping responses grounded in real citations.
 
+**How retrieval ranking works — semantic similarity + citation impact**
+Each search result is ranked by a combined score that blends two signals:
+
+```
+combined = (semantic_similarity × 0.7) + (normalized_RCR × 0.3)
+```
+
+The 70% semantic similarity component comes from ChromaDB's cosine distance comparison — how closely the abstract's meaning matches the agent's search query in vector space. The 30% citation impact component comes from NIH iCite's **Relative Citation Ratio (RCR)** — a field-normalized score where 1.0 equals the field average, 2.0 equals twice the average, and so on. RCR is soft-capped at 10 before normalization to prevent a single landmark paper from dominating every search regardless of relevance.
+
+The practical effect: a highly cited RCT that is also semantically relevant ranks highest. A highly relevant but uncited preprint ranks below a moderately relevant but well-established trial. Semantic relevance always remains primary — a completely off-topic paper with a high RCR will not surface — but citation weight breaks ties in favor of established, peer-validated literature.
+
+iCite data (`citation_count` and `rcr`) is fetched during the build phase and stored as metadata in ChromaDB alongside each vector. The RCR and citation count are also displayed in the literature context injected into each agent turn so agents can see the impact weight of papers they are drawing from.
+
 **Why multi-query retrieval instead of a single search?**
 As a conversation narrows onto a specific topic, a single query tends to retrieve the same papers on every turn. Three parallel queries — one following the conversation directly, one biased toward mechanistic/resistance literature, one biased toward clinical trial/biomarker literature — ensure retrieval breadth doesn't collapse. Results are deduplicated by PMID so the context window never receives the same abstract twice.
 
