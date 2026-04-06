@@ -24,12 +24,25 @@ Requirements: py -m pip install -r requirements.txt
 # time         — adds delays between API calls to respect NCBI rate limits
 # pathlib      — constructs file paths in a cross-platform way
 # urllib       — makes HTTP requests to the iCite API (stdlib, no install needed)
+# os           — reads environment variables from the .env file
 import argparse
 import json
+import os
 import time
 import urllib.request
 import urllib.parse
 from pathlib import Path
+
+# ── Load .env ─────────────────────────────────────────────────────────────────
+# Reads Colo/.env and loads KEY=VALUE pairs into environment variables so
+# secrets never need to be hardcoded in source code.
+_env_file = Path(__file__).parent.parent / ".env"
+if _env_file.exists():
+    for _line in _env_file.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _, _v = _line.partition("=")
+            os.environ.setdefault(_k.strip(), _v.strip())
 
 # Bio.Entrez  — Python wrapper for NCBI's E-utilities API (PubMed access)
 # PersistentClient — ChromaDB client that saves the vector store to disk
@@ -43,8 +56,8 @@ from tqdm import tqdm
 # ── Config ────────────────────────────────────────────────────────────────────
 # All tunable settings live here so you never need to hunt through the code.
 
-NCBI_EMAIL   = "pallaney@gmail.com"       # Required by NCBI to identify who is making requests
-NCBI_API_KEY = "c8e0902b764c43d48fd2e3d1d7e929ad1808"  # Raises rate limit from 3 → 10 requests/sec
+NCBI_EMAIL   = "pallaney@gmail.com"                    # Required by NCBI to identify who is making requests
+NCBI_API_KEY = os.environ.get("NCBI_API_KEY", "")      # Loaded from .env — raises rate limit from 3 → 10 req/sec
 
 # MeSH term scoped to colorectal cancer, date-filtered to last 10 years
 SEARCH_TERM  = '"colorectal neoplasms"[MeSH]'
