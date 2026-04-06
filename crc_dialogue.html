@@ -56,6 +56,15 @@
     .dot.thinking { background: #f59e0b; animation: pulse 1s infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
+    /* ── Resize container — wraps personas + handle + lower section ── */
+    .resize-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+
     /* ── Persona Row ── */
     .personas {
       flex-shrink: 0;
@@ -63,6 +72,7 @@
       grid-template-columns: 1fr 1fr;
       border-bottom: 1px solid #2d3148;
       height: 230px;
+      min-height: 80px;
     }
     .persona-panel {
       display: flex;
@@ -117,6 +127,38 @@
     }
     .panel-a .persona-prompt:focus { border-color: #1e3a5f; }
     .panel-b .persona-prompt:focus { border-color: #4a1942; }
+
+    /* ── Drag handle between personas and chat ── */
+    .drag-handle {
+      flex-shrink: 0;
+      height: 6px;
+      background: #1e2130;
+      border-top: 1px solid #2d3148;
+      border-bottom: 1px solid #2d3148;
+      cursor: row-resize;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+    .drag-handle:hover, .drag-handle.dragging { background: #6366f1; }
+    .drag-handle::after {
+      content: '';
+      width: 32px;
+      height: 2px;
+      background: #475569;
+      border-radius: 2px;
+    }
+    .drag-handle:hover::after, .drag-handle.dragging::after { background: #fff; }
+
+    /* ── Lower section (controls + lit drawer + chat + footer) ── */
+    .lower-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
 
     /* ── Controls Bar ── */
     .controls-bar {
@@ -317,6 +359,8 @@
   </div>
 </header>
 
+<div class="resize-container" id="resize-container">
+
 <!-- ── Personas Side by Side ── -->
 <div class="personas">
   <div class="persona-panel panel-a">
@@ -373,6 +417,10 @@ RULES:
   </div>
 </div>
 
+<!-- ── Drag Handle ── -->
+<div class="drag-handle" id="drag-handle"></div>
+
+<div class="lower-section">
 <!-- ── Controls Bar ── -->
 <div class="controls-bar">
   <input class="topic-input" id="opening-topic" type="text" placeholder="Opening topic — e.g. MSI-H status and immunotherapy eligibility in stage III CRC..." />
@@ -412,7 +460,46 @@ RULES:
   <button class="btn-inject" onclick="injectMessage()">Inject</button>
 </div>
 
+</div> <!-- end lower-section -->
+</div> <!-- end resize-container -->
+
 <script>
+  // ── Drag-to-resize persona panel ─────────────────────────────────────────
+  // Lets the user drag the handle between the persona panels and the chat
+  // window to resize the persona area. Tracks mouse position during drag
+  // and updates the personas div height directly.
+  (function () {
+    const handle   = document.getElementById('drag-handle');
+    const personas = document.querySelector('.personas');
+    let dragging = false;
+    let startY, startH;
+
+    handle.addEventListener('mousedown', e => {
+      dragging = true;
+      startY   = e.clientY;
+      startH   = personas.offsetHeight;
+      handle.classList.add('dragging');
+      document.body.style.cursor    = 'row-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const delta  = e.clientY - startY;
+      const newH   = Math.max(80, Math.min(startH + delta, window.innerHeight - 200));
+      personas.style.height = newH + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove('dragging');
+      document.body.style.cursor     = '';
+      document.body.style.userSelect = '';
+    });
+  })();
+
   // ── State ─────────────────────────────────────────────────────────────────
   let messages = [];
   let currentTurn = 0;
