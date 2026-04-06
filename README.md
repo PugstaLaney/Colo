@@ -10,6 +10,11 @@ The long-term goal is to run this against the full PubMed colorectal cancer corp
 
 ---
 
+<img width="2547" height="1276" alt="image" src="https://github.com/user-attachments/assets/e5a5f38d-0900-4b11-805b-61c832553fee" />
+
+
+
+
 ## The Two Agents
 
 **Agent A — Dr. Alex Chen (Clinical Oncologist)**
