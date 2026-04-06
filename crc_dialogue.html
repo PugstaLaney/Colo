@@ -515,19 +515,55 @@ Do not continue debating. Only provide VERDICT, AGREE/DISAGREE, and NEXT LANE.`;
     }
   }
 
-  async function fetchRagContext(query) {
+  async function fetchRagContext(baseQuery) {
+    // ── Multi-query retrieval ─────────────────────────────────────────────
+    // Generate 3 query angles from the base query so retrieval doesn't keep
+    // returning the same papers as the conversation narrows. Each angle
+    // approaches the topic from a different framing — clinical, mechanistic,
+    // and biomarker-focused. All three fire in parallel, results are merged
+    // and deduplicated by PMID, then trimmed to the top 12 unique abstracts.
+
+    const queries = [
+      baseQuery,                                          // Original: drawn from recent conversation
+      `${baseQuery} resistance mechanisms tumor biology`, // Mechanistic angle
+      `${baseQuery} clinical trial outcomes biomarker`,   // Clinical/translational angle
+    ];
+
     try {
-      const res = await fetch(`${RAG_SERVER}/search`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ query, n_results: 5 }),
-      });
-      const results = await res.json();
-      if (!results.length) return '';
-      const chunks = results.map(r =>
+      // Fire all three searches in parallel
+      const responses = await Promise.all(
+        queries.map(q =>
+          fetch(`${RAG_SERVER}/search`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ query: q, n_results: 12 }),
+          }).then(r => r.json()).catch(() => [])
+        )
+      );
+
+      // Merge results and deduplicate by PMID — first occurrence wins
+      // (results are sorted by relevance, so earlier = more relevant)
+      const seen = new Set();
+      const merged = [];
+      for (const resultSet of responses) {
+        for (const r of resultSet) {
+          if (!seen.has(r.pmid)) {
+            seen.add(r.pmid);
+            merged.push(r);
+          }
+        }
+      }
+
+      if (!merged.length) return '';
+
+      // Take top 12 unique results after deduplication
+      const top = merged.slice(0, 12);
+
+      const chunks = top.map(r =>
         `PMID ${r.pmid} (${r.year}) — ${r.title}\nAuthors: ${r.authors}\nJournal: ${r.journal}\n\n${r.abstract}`
       );
       return chunks.join('\n\n---\n\n');
+
     } catch (e) {
       return '';
     }

@@ -50,7 +50,7 @@ CHROMA_DIR  = Path(__file__).parent.parent / "data" / "chroma_db"
 COLLECTION  = "crc_abstracts"
 EMBED_MODEL = "all-MiniLM-L6-v2"  # Must be identical to build_rag.py — mismatched models
                                     # produce incompatible vectors and garbage search results
-DEFAULT_K   = 5  # Number of abstracts returned per search query
+DEFAULT_K   = 12  # Number of abstracts returned per search query
 
 
 # ── Load .env file ───────────────────────────────────────────────────────────

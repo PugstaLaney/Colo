@@ -40,7 +40,7 @@ PubMed API
                                             └── agents respond citing real PMIDs
 ```
 
-At query time, the search is semantic — not keyword-based. The agent's recent conversation is converted into a vector and compared against all stored abstract vectors. The 5 most similar abstracts are retrieved and injected into the agent's context window before it generates a response.
+At query time, the search is semantic — not keyword-based. The agent's recent conversation is used to generate 3 query angles simultaneously — the original query, a mechanistic variant, and a clinical/translational variant. All three fire in parallel against the vector store, results are merged and deduplicated by PMID, and the top 12 unique abstracts are injected into the agent's context window before it generates a response. This multi-query approach prevents retrieval from collapsing onto the same papers as the conversation narrows.
 
 ---
 
@@ -76,7 +76,7 @@ The entire front-end application. Open directly in a browser — no installation
 - Inject bar at the bottom to steer the conversation mid-session
 - Export button that saves the full transcript as a `.txt` file
 
-The RAG toggle connects to `serve_rag.py` running locally. When enabled, each agent turn triggers a semantic search of the vector store before the Anthropic API call is made, injecting the top 5 most relevant abstracts into the agent's context.
+The RAG toggle connects to `serve_rag.py` running locally. When enabled, each agent turn triggers a multi-query semantic search — 3 parallel queries firing against the vector store, results merged and deduplicated by PMID — injecting the top 12 unique abstracts into the agent's context before the Anthropic API call is made. The API key auto-loads from the local `.env` file via the `/config` endpoint when the RAG server is running.
 
 ---
 
@@ -124,7 +124,8 @@ py build_rag.py --resume
 Lightweight FastAPI server that must be running in a terminal whenever the HTML app is open with RAG enabled. Loads the embedding model and ChromaDB collection into RAM at startup, then exposes two endpoints:
 
 - `GET /health` — liveness check; returns paper count. Called when you click the RAG button in the browser.
-- `POST /search` — accepts a query string, converts it to a vector, finds the top-k nearest abstracts in ChromaDB by cosine similarity, and returns them as JSON. Called automatically before each agent turn.
+- `GET /config` — serves the Anthropic API key from the local `.env` file to the browser app on page load, so the key never needs to be hardcoded in the HTML or entered manually.
+- `POST /search` — accepts a query string, converts it to a vector, finds the top-k nearest abstracts in ChromaDB by cosine similarity, and returns them as JSON. Called 3 times in parallel per agent turn (multi-query retrieval), with results merged and deduplicated before injection.
 
 The server only listens on `127.0.0.1` (localhost) and is not accessible from outside your machine.
 
@@ -181,7 +182,10 @@ py build_rag.py --resume
 ## Design Notes
 
 **Why RAG instead of pasting abstracts manually?**
-Pasting the full literature corpus into every API call would cost ~$1 per agent turn for 70k papers. RAG retrieves only the 5 most relevant abstracts per turn (~1,500 tokens), reducing cost by ~99% while keeping responses grounded in real citations.
+Pasting the full literature corpus into every API call would cost ~$1 per agent turn for 107k papers. RAG retrieves only the 12 most relevant abstracts per turn (~3,500 tokens), reducing cost by ~99% while keeping responses grounded in real citations.
+
+**Why multi-query retrieval instead of a single search?**
+As a conversation narrows onto a specific topic, a single query tends to retrieve the same papers on every turn. Three parallel queries — one following the conversation directly, one biased toward mechanistic/resistance literature, one biased toward clinical trial/biomarker literature — ensure retrieval breadth doesn't collapse. Results are deduplicated by PMID so the context window never receives the same abstract twice.
 
 **Why a local vector store instead of a cloud service?**
 ChromaDB runs entirely on your machine. No data leaves your system, no API costs for embeddings at query time, and no dependency on external infrastructure.
@@ -189,5 +193,76 @@ ChromaDB runs entirely on your machine. No data leaves your system, no API costs
 **Why two agents instead of one?**
 A single agent asked to summarize literature will produce consensus. Two agents with adversarial framings will surface contradictions, gaps, and competing interpretations — which is where the actual research signal lives. The DISAGREE: mechanism and evidence hierarchy rules are designed to prevent the agents from collapsing into agreement prematurely.
 
+**Why structured evidence labels?**
+The `[RCT]` / `[META]` / `[COHORT]` / `[PRECLINICAL]` / `[EXPERT]` tagging system forces agents to declare the quality of their evidence on every claim. A VERDICT is only valid if backed by `[RCT]` or `[META]` level evidence with no unresolved `DISAGREE:` flags. This is the primary quality filter — it prevents a cell line finding from being argued at the same weight as a phase III trial result.
+
 **On measuring RAG influence vs. pre-trained knowledge**
-The model has likely seen a significant portion of pre-2024 PubMed during training. RAG becomes most valuable for 2024–2025 papers that postdate the training cutoff. A future citation provenance audit — checking whether cited PMIDs exist in the local database — would quantify how much the agents are drawing from retrieved literature vs. internalized knowledge.
+The model has likely seen a significant portion of pre-2024 PubMed during training. RAG becomes most valuable for 2024–2025 papers that postdate the training cutoff. A planned citation provenance audit — checking whether cited PMIDs exist in the local database — will quantify how much agents draw from retrieved literature vs. internalized knowledge. Papers cited that are absent from the local database are by definition drawn from pre-training, not RAG.
+
+---
+
+## Validation and Accuracy
+
+A core challenge for any AI literature synthesis tool is proving it works beyond subjective expert opinion. Several complementary approaches are planned:
+
+**Citation provenance audit**
+After each session, cross-reference every PMID cited by the agents against `pubmed_cache.json`. Citations present in the database are RAG-grounded; citations absent are drawn from pre-training. A high provenance rate indicates the system is genuinely retrieving rather than confabulating. A script to automate this audit is planned.
+
+**Known-answer benchmarking**
+Construct a set of questions with established, consensus answers in the CRC literature — e.g., "What did KEYNOTE-177 show about pembrolizumab vs. chemotherapy in MSI-H mCRC first-line?" — and evaluate whether the agents cite the correct trial, reproduce the correct hazard ratio, and reach the correct VERDICT. Systematic deviation from ground truth is measurable without domain expertise.
+
+**Retrieval quality scoring**
+For a sample of agent turns, manually assess whether the 12 retrieved abstracts are topically relevant to the query that generated them. A relevance rate below ~70% indicates the embedding model or query strategy needs improvement.
+
+**Contradiction detection rate**
+Count how often agents flag genuine contradictions in the literature (unresolved `DISAGREE:` flags that cite conflicting evidence) versus how often they reach premature consensus. A system that never disagrees is not triaging — it is summarizing.
+
+**Longitudinal stability**
+Run the same opening topic across multiple sessions and measure VERDICT consistency. High variance suggests the system is sensitive to retrieval noise. Low variance on well-established topics (MSI-H immunotherapy) and appropriate variance on genuinely contested topics (ctDNA decision thresholds) is the target behavior.
+
+---
+
+## Future Directions
+
+### Near-term (in progress)
+
+**Citation provenance audit script**
+A post-session script that cross-references every PMID cited by the agents against `pubmed_cache.json`. Citations present in the database are confirmed RAG-grounded; citations absent are flagged as drawn from pre-training. Produces a provenance rate score that quantifies how much the system is genuinely retrieving vs. drawing on internalized model knowledge. This is the primary accuracy validation mechanism.
+
+**Session persistence**
+Save and reload full conversation transcripts including message history, agent state, and retrieved citations. Currently a session is lost when the browser closes. Persistence enables longitudinal research sessions across multiple days and allows revisiting prior VERDICTs.
+
+**VERDICT extraction and structured export**
+A dedicated export format that pulls only the VERDICT, AGREE/DISAGREE, and NEXT LANE outputs from a full session transcript and formats them as a numbered, citable hypothesis list. Designed to feed directly into a research proposal or manuscript methods section.
+
+**Known-answer benchmark suite**
+A curated set of 20–30 questions with established ground-truth answers in the CRC and appendiceal cancer literature — correct hazard ratios, trial primary endpoints, prevalence figures — used to score system factual accuracy and citation accuracy systematically. Each question scored on factual correctness, PMID accuracy, and evidence level tagging.
+
+**Agent-specific query biasing**
+Currently both agents use the same multi-query retrieval strategy. The planned implementation biases retrieval by persona — Dr. Clinical's queries are suffixed toward clinical trial and outcomes literature, Dr. Bench's toward mechanistic and TME literature — so each agent draws from the slice of the corpus most relevant to their reasoning frame.
+
+---
+
+### Medium-term
+
+**Configurable corpus**
+Allow users to define their own PubMed search query — MeSH terms, date range, journal filters — directly in the UI rather than editing Python config files. Any research domain becomes accessible without code changes. The CRC corpus is the default; users in breast cancer, NSCLC, or rare disease research can point the system at their own literature.
+
+**Epidemiology agent (Agent C)**
+A third agent with access to real-world population datasets — SEER, CDC WONDER, CMS claims — that can generate and run EDA pipelines against actual incidence, survival, and treatment data. When Agents A and B debate whether MSI-H patients have better survival outcomes, Agent C runs the SEER query and returns real population-level survival curves. Grounds theoretical deliberation in empirical data.
+
+**Journal tier weighting**
+Add a metadata field during the build phase that flags papers from high-impact journals (NEJM, Lancet Oncology, JCO, Nature Medicine). At retrieval time, agents are instructed to prefer higher-tier citations when evidence levels are otherwise equivalent. Addresses the limitation that the current vector search treats a case report and a phase III trial as equal if their abstract text is similarly relevant.
+
+---
+
+### Long-term
+
+**Web-hosted deployment**
+Package the system for non-technical users — no local Python server required, no terminal, no build step. Researchers log in, select a domain corpus, enter a research question, and receive a structured VERDICT transcript. The local architecture is a deliberate starting point for development; the end state is a hosted research tool accessible to any lab.
+
+**Multi-domain corpus library**
+Pre-built, maintained vector databases for high-value oncology niches — appendiceal cancer, peritoneal malignancies, HIPEC, rare GI tumors — where literature is thin enough that comprehensive synthesis is most valuable and where the gap between what AI can surface and what a researcher has read is largest.
+
+**Systematic review acceleration**
+Structured output pipelines that format VERDICT transcripts directly into PRISMA-compatible systematic review frameworks, with auto-generated citation lists, evidence tables, and GRADE-style evidence quality summaries. Designed to reduce the time from research question to manuscript-ready literature review from months to days.
