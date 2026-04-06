@@ -76,12 +76,12 @@ Colo/
 
 ### `crc_dialogue.html`
 The entire front-end application. Open directly in a browser — no installation required. Contains:
-- API key field (pre-filled) for the Anthropic API
-- Two editable persona panels side by side (Agent A and Agent B system prompts)
-- Controls bar: opening topic input, turn count, Start / Next Turn / Stop, RAG toggle, Literature drawer, Export, Clear
-- Chat window where the agent dialogue streams in real time
-- Inject bar at the bottom to steer the conversation mid-session
-- Export button that saves the full transcript as a `.txt` file
+- **API key field** — auto-loads from `.env` via the RAG server on page load; falls back to manual entry if the server isn't running
+- **Persona panels** — two editable system prompt panels side by side (Agent A left, Agent B right), each with an editable name field. The divider between the panels and the chat window is **draggable** — click and drag it down to expand the persona area and read longer prompts
+- **Controls bar** — opening topic input, turn count, Start / Next Turn / Stop, RAG toggle (shows paper count when connected), Literature drawer (manual abstract paste-in), Export, Clear
+- **Chat window** — agent dialogue streams in real time; Agent A messages left-aligned, Agent B right-aligned
+- **Inject bar** — type any prompt at the bottom and press Enter to inject it into the live conversation without stopping the run
+- **Export** — saves the full transcript including literature context as a `.txt` file
 
 The RAG toggle connects to `serve_rag.py` running locally. When enabled, each agent turn triggers a multi-query semantic search — 3 parallel queries firing against the vector store, results merged and deduplicated by PMID — injecting the top 12 unique abstracts into the agent's context before the Anthropic API call is made. The API key auto-loads from the local `.env` file via the `/config` endpoint when the RAG server is running.
 
@@ -111,7 +111,9 @@ Runs once (or overnight) to build the vector store. Does three things in sequenc
 
 2. **Fetch** — downloads abstracts from PubMed in batches of 500. Saves progress to `data/pubmed_cache.json` after every batch so interrupted runs can resume. With an NCBI API key, fetches at 10 requests/sec; without one, 3 requests/sec.
 
-3. **Embed + Store** — converts each abstract (title + abstract text concatenated) into a 384-number vector using `all-MiniLM-L6-v2`, then stores the vector alongside the original text and metadata (PMID, title, authors, year, journal) in ChromaDB.
+3. **iCite Enrichment** — queries the free NIH iCite API in batches of 100 PMIDs to fetch `citation_count` and `rcr` (Relative Citation Ratio) for every paper. Results are saved back to the cache. Safe to re-run — skips records already enriched.
+
+4. **Embed + Store** — converts each abstract (title + abstract text concatenated) into a 384-number vector using `all-MiniLM-L6-v2`, then stores the vector alongside the original text and metadata (PMID, title, authors, year, journal, rcr, citation_count) in ChromaDB.
 
 **Commands:**
 ```bash
@@ -157,27 +159,38 @@ ChromaDB's on-disk storage. Contains binary index files and a SQLite database st
 
 ### First-time setup
 ```bash
-# 1. Install Python dependencies
+# 1. Create a .env file in the Colo/ root with your API keys (never committed to git)
+#    ANTHROPIC_API_KEY=sk-ant-...
+#    NCBI_API_KEY=your-ncbi-key
+
+# 2. Install Python dependencies
 cd "path/to/Colo/rag"
 py -m pip install -r requirements.txt
 
-# 2. Test the scraper and embedder (500 papers)
+# 3. Test the full pipeline with 500 papers
 py build_rag.py --limit 500
 
-# 3. Run the full build overnight
+# 4. Run the full build overnight (107,000+ papers)
 py build_rag.py
 ```
 
 ### Every session
 ```bash
-# Terminal 1 — start the RAG server (leave running)
+# Terminal 1 — start the RAG server and leave it running
 cd "path/to/Colo/rag"
 py serve_rag.py
 
 # Then open crc_dialogue.html in Chrome or Edge
-# Click RAG Off to connect → should flip green with paper count
-# Enter a topic, set turn count, hit Start
+# The Anthropic API key loads automatically from .env via the server
+# Click RAG Off → flips green and shows paper count
+# Enter an opening topic, set turn count (6 recommended), hit Start
 ```
+
+### Steering a session mid-run
+Use the **Inject** bar at the bottom of the chat window to redirect the conversation without stopping it. Type any prompt and press Enter — it gets added to the conversation history as if spoken by the opposing agent, so the next speaker responds to it directly. Useful for forcing a VERDICT early, redirecting to a different research lane, or introducing a specific paper or finding.
+
+### Consensus checkpoints
+Every 4 agent turns the orchestrator automatically pauses the conversation and injects a checkpoint prompt requiring both agents to produce a `VERDICT` (testable hypothesis), an `AGREE/DISAGREE` judgment, and a `NEXT LANE` recommendation before the conversation continues. This prevents indefinite hypothesis generation without resolution.
 
 ### If the build is interrupted
 ```bash
