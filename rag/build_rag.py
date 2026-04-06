@@ -19,13 +19,16 @@ Requirements: py -m pip install -r requirements.txt
 """
 
 # ── Imports ───────────────────────────────────────────────────────────────────
-# argparse  — reads command-line flags like --limit and --resume
-# json      — reads/writes the local abstract cache file
-# time      — adds delays between API calls to respect NCBI rate limits
-# pathlib   — constructs file paths in a cross-platform way
+# argparse     — reads command-line flags like --limit and --resume
+# json         — reads/writes the local abstract cache file
+# time         — adds delays between API calls to respect NCBI rate limits
+# pathlib      — constructs file paths in a cross-platform way
+# urllib       — makes HTTP requests to the iCite API (stdlib, no install needed)
 import argparse
 import json
 import time
+import urllib.request
+import urllib.parse
 from pathlib import Path
 
 # Bio.Entrez  — Python wrapper for NCBI's E-utilities API (PubMed access)
@@ -177,6 +180,77 @@ def parse_records(records) -> list[dict]:
     return results
 
 
+# ── iCite citation metrics ────────────────────────────────────────────────────
+
+def fetch_icite_batch(pmids: list[str]) -> dict[str, dict]:
+    """
+    Fetches citation metrics from the NIH iCite API for a batch of PMIDs.
+    iCite is completely free, requires no API key, and returns:
+      - citation_count  : raw number of times the paper has been cited
+      - rcr             : Relative Citation Ratio — a field-normalized impact
+                          score where 1.0 = average for papers in that field,
+                          2.0 = twice the average, etc. Better than raw citation
+                          count because it accounts for field-specific norms.
+    Returns a dict keyed by PMID string. Papers not found in iCite get rcr=0.
+    Handles network failures silently — missing iCite data just means rcr=0,
+    which excludes the paper from ranking bonuses but doesn't break anything.
+    """
+    if not pmids:
+        return {}
+
+    # iCite accepts up to 100 PMIDs per request as a comma-separated list
+    url = "https://icite.od.nih.gov/api/pubs?pmids=" + ",".join(pmids)
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = json.loads(resp.read())
+        result = {}
+        for pub in data.get("data", []):
+            pmid = str(pub.get("pmid", ""))
+            if pmid:
+                result[pmid] = {
+                    "citation_count": int(pub.get("citation_count") or 0),
+                    "rcr":            float(pub.get("relative_citation_ratio") or 0.0),
+                }
+        return result
+    except Exception:
+        return {}  # Network error or rate limit — return empty, safe to continue
+
+
+def enrich_with_icite(cache: dict) -> dict:
+    """
+    Loops through all cached records and adds citation_count and rcr fields
+    by querying iCite in batches of 100. Only fetches records that don't
+    already have iCite data (so re-running is safe and fast).
+    Prints progress since this can take a few minutes for large corpora.
+    """
+    # Find PMIDs that still need iCite enrichment
+    needs_enrichment = [
+        pmid for pmid, r in cache.items()
+        if "rcr" not in r
+    ]
+
+    if not needs_enrichment:
+        print("  iCite data already present for all records.")
+        return cache
+
+    print(f"\nFetching iCite citation metrics for {len(needs_enrichment):,} papers...")
+    ICITE_BATCH = 100  # iCite API limit per request
+
+    for i in tqdm(range(0, len(needs_enrichment), ICITE_BATCH)):
+        batch_pmids = needs_enrichment[i : i + ICITE_BATCH]
+        icite_data  = fetch_icite_batch(batch_pmids)
+
+        for pmid in batch_pmids:
+            metrics = icite_data.get(pmid, {"citation_count": 0, "rcr": 0.0})
+            cache[pmid]["citation_count"] = metrics["citation_count"]
+            cache[pmid]["rcr"]            = metrics["rcr"]
+
+        time.sleep(0.05)  # ~20 req/sec — well within iCite's limits
+
+    print(f"  iCite enrichment complete.")
+    return cache
+
+
 # ── Cache helpers ─────────────────────────────────────────────────────────────
 
 def load_cache() -> dict[str, dict]:
@@ -251,11 +325,16 @@ def build_vectorstore(records: list[dict], resume: bool):
             documents  = [r["abstract"] for r in batch],  # Original text returned at query time
             metadatas  = [
                 {
-                    "pmid":    r["pmid"],
-                    "title":   r["title"][:500],    # ChromaDB has a metadata string length limit
-                    "authors": r["authors"][:300],
-                    "year":    r["year"],
-                    "journal": r["journal"][:200],
+                    "pmid":           r["pmid"],
+                    "title":          r["title"][:500],    # ChromaDB has a metadata string length limit
+                    "authors":        r["authors"][:300],
+                    "year":           r["year"],
+                    "journal":        r["journal"][:200],
+                    # iCite citation metrics — used by serve_rag.py to re-rank results
+                    # rcr (Relative Citation Ratio): field-normalized impact score
+                    #   1.0 = field average, 2.0 = twice average, 0 = not yet in iCite
+                    "rcr":            float(r.get("rcr", 0.0)),
+                    "citation_count": int(r.get("citation_count", 0)),
                 }
                 for r in batch
             ],
@@ -309,10 +388,18 @@ def main():
 
         print(f"  Cache now contains {len(cache):,} records → {CACHE_FILE}")
 
+    # ── Step 3: Enrich with iCite citation metrics ────────────────────────────
+    # Adds citation_count and rcr (Relative Citation Ratio) to every cached
+    # record by querying the free NIH iCite API. Safe to re-run — skips
+    # records already enriched. Saves updated cache to disk afterward.
+    cache = enrich_with_icite(cache)
+    save_cache(cache)
+
     all_records = list(cache.values())
 
-    # ── Step 3: Embed + store ─────────────────────────────────────────────────
+    # ── Step 4: Embed + store ─────────────────────────────────────────────────
     # Convert all cached abstracts to vectors and load into ChromaDB.
+    # rcr and citation_count are stored as metadata alongside each vector.
     # --resume skips PMIDs already present in the vector store.
     build_vectorstore(all_records, resume=args.resume)
 

@@ -646,9 +646,10 @@ Do not continue debating. Only provide VERDICT, AGREE/DISAGREE, and NEXT LANE.`;
       // Take top 12 unique results after deduplication
       const top = merged.slice(0, 12);
 
-      const chunks = top.map(r =>
-        `PMID ${r.pmid} (${r.year}) — ${r.title}\nAuthors: ${r.authors}\nJournal: ${r.journal}\n\n${r.abstract}`
-      );
+      const chunks = top.map(r => {
+        const rcrLabel = r.rcr > 0 ? ` | RCR: ${r.rcr} (${r.citation_count} citations)` : '';
+        return `PMID ${r.pmid} (${r.year}) — ${r.title}\nAuthors: ${r.authors}\nJournal: ${r.journal}${rcrLabel}\n\n${r.abstract}`;
+      });
       return chunks.join('\n\n---\n\n');
 
     } catch (e) {

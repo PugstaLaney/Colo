@@ -112,13 +112,15 @@ class SearchRequest(BaseModel):
 
 
 class SearchResult(BaseModel):
-    pmid:     str    # PubMed ID — agents cite this in their responses
-    title:    str
-    abstract: str    # Full abstract text — injected into the agent's context window
-    authors:  str
-    year:     str
-    journal:  str
-    score:    float  # Cosine distance — lower means more semantically similar to the query
+    pmid:           str    # PubMed ID — agents cite this in their responses
+    title:          str
+    abstract:       str    # Full abstract text — injected into the agent's context window
+    authors:        str
+    year:           str
+    journal:        str
+    score:          float  # Cosine distance — lower means more semantically similar to the query
+    rcr:            float  # Relative Citation Ratio — field-normalized impact (1.0 = field average)
+    citation_count: int    # Raw citation count from NIH iCite
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -177,19 +179,56 @@ def search(req: SearchRequest):
         include=["documents", "metadatas", "distances"],
     )
 
-    # Step 3: package results into clean response objects
-    output = []
+    # Step 3: package raw results and compute combined ranking score
+    raw = []
     for i in range(len(results["ids"][0])):
-        meta = results["metadatas"][0][i]
-        output.append(SearchResult(
-            pmid     = meta.get("pmid", ""),
-            title    = meta.get("title", ""),
-            abstract = results["documents"][0][i],  # Original text, not the vector
-            authors  = meta.get("authors", ""),
-            year     = meta.get("year", ""),
-            journal  = meta.get("journal", ""),
-            score    = round(results["distances"][0][i], 4),
-        ))
+        meta     = results["metadatas"][0][i]
+        distance = results["distances"][0][i]   # Cosine distance: 0 = identical, 2 = opposite
+        rcr      = float(meta.get("rcr", 0.0))
+
+        # Convert cosine distance to similarity (0–1 scale, higher = more relevant)
+        semantic_sim = 1.0 - (distance / 2.0)
+
+        # Normalize RCR to 0–1 using a soft cap at RCR=10 (extremely high impact).
+        # Papers above RCR=10 exist but are outliers — capping prevents one landmark
+        # paper from dominating every search regardless of semantic relevance.
+        rcr_norm = min(rcr / 10.0, 1.0)
+
+        # Combined score: semantic similarity dominates (70%), citation impact boosts (30%).
+        # A highly cited RCT on the exact topic beats a low-cited paper that happens
+        # to use similar language, but semantic relevance always remains primary.
+        combined = (semantic_sim * 0.7) + (rcr_norm * 0.3)
+
+        raw.append({
+            "pmid":           meta.get("pmid", ""),
+            "title":          meta.get("title", ""),
+            "abstract":       results["documents"][0][i],
+            "authors":        meta.get("authors", ""),
+            "year":           meta.get("year", ""),
+            "journal":        meta.get("journal", ""),
+            "score":          round(distance, 4),
+            "rcr":            round(rcr, 3),
+            "citation_count": int(meta.get("citation_count", 0)),
+            "combined":       combined,
+        })
+
+    # Re-rank by combined score descending, then strip the internal combined field
+    raw.sort(key=lambda x: x["combined"], reverse=True)
+
+    output = [
+        SearchResult(
+            pmid           = r["pmid"],
+            title          = r["title"],
+            abstract       = r["abstract"],
+            authors        = r["authors"],
+            year           = r["year"],
+            journal        = r["journal"],
+            score          = r["score"],
+            rcr            = r["rcr"],
+            citation_count = r["citation_count"],
+        )
+        for r in raw
+    ]
 
     return output
 
