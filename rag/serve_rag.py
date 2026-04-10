@@ -236,7 +236,7 @@ def search(req: SearchRequest):
 # ── Entry point ───────────────────────────────────────────────────────────────
 # uvicorn is the ASGI server that actually runs FastAPI and listens for HTTP
 # requests. host="127.0.0.1" means localhost only — the server cannot be
-# reached from outside your machine.
+# reached from outside host machine.
 
 if __name__ == "__main__":
     import uvicorn

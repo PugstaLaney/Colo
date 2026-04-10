@@ -143,7 +143,7 @@ def fetch_batch(web_env: str, query_key: str, start: int, count: int) -> list[di
 def parse_records(records) -> list[dict]:
     """
     Converts raw Entrez XML records into clean Python dicts with only the
-    fields we need. Skips papers with no abstract — they have no useful
+    fields we need. Skips papers with no abstract. They have no useful
     text to embed. Silently skips malformed records rather than crashing.
     Each dict contains: pmid, title, abstract, authors, year, journal.
     """

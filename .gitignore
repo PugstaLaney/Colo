@@ -7,3 +7,6 @@ data/
 # Python cache
 __pycache__/
 *.pyc
+
+# Local design notes — personal reference, not for public repo
+DESIGN_NOTES.md
